@@ -60,6 +60,22 @@ macro_rules! create_problem {
 }
 
 #[macro_export]
+macro_rules! create_constraint {
+    ( $($val:expr),*; $constant:expr ) => {
+        {
+            let mut constraint = Constraint::new();
+            constraint.set_value($constant);
+            let mut coeffs = Vec::new();
+            $(
+                coeffs.push($val);
+            )*
+                constraint.add_coeffs(&coeffs);
+            constraint
+        }
+    }
+}
+
+#[macro_export]
 macro_rules! add_variables {
     ( $problem:expr, $( $var:ident ),* ) => {
         $(
@@ -86,6 +102,7 @@ macro_rules! add_constraint {
 pub struct Problem {
     max_variable: u32,
     constraints: Vec<Constraint>,
+    objective: Option<Constraint>,
 }
 
 impl Problem {
@@ -93,7 +110,12 @@ impl Problem {
         Problem {
             max_variable: 0,
             constraints: Vec::new(),
+            objective: None,
         }
+    }
+
+    pub fn set_objective(&mut self, objective: Constraint) {
+        self.objective = Some(objective);
     }
 
     pub fn add_row(&mut self, values: &[f64], constant: f64) {
@@ -145,6 +167,12 @@ impl Constraint {
         self.constant = constant;
     }
 
+    pub fn add_coeffs(&mut self, coeffs: &[f64]) {
+        for (index, coeff) in coeffs.iter().enumerate() {
+            self.coeffs.insert(index as u32, *coeff);
+        }
+    }
+
     pub fn add_term(&mut self, coeff: f64, variable: Variable) {
         self.coeffs.insert(variable.index, coeff);
     }
@@ -170,8 +198,9 @@ impl fmt::Debug for Matrix {
 
 impl Matrix {
     fn new(problem: &Problem) -> Matrix {
-        let width = problem.max_variable as usize + 1;
-        let height = width - 1;
+        let max = problem.max_variable as usize + 1;
+        let width = 2 * max;
+        let height = max;
         let mut coeffs = vec![0.0;width*height];
 
         let mut row = 0;
@@ -180,7 +209,20 @@ impl Matrix {
                 coeffs[*index as usize + row * width] = *value;
             }
             coeffs[width - 1 + row * width] = constraint.constant;
+
             row += 1;
+        }
+        for i in 0..max {
+            coeffs[i + max + i * width] = 1.0;
+        }
+
+        if let Some(objective) = &problem.objective {
+            let row = height - 1;
+            for (index, value) in objective.coeffs.iter(){
+                coeffs[*index as usize + row * width] = *value;
+            }
+            coeffs[width - 1 + row * width] = objective.constant;
+            coeffs[width - 2 + row * width] = 1.0;
         }
 
         Matrix {
