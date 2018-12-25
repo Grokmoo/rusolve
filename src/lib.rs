@@ -42,6 +42,46 @@ impl fmt::Debug for Solution {
     }
 }
 
+#[macro_export]
+macro_rules! create_problem {
+    ( $( [ $($val:expr),*; $constant:expr ] ),* ) => {
+        {
+            let mut problem = Problem::new();
+            $(
+                let mut values = Vec::new();
+                $(
+                    values.push($val);
+                )*
+                problem.add_row(&values, $constant);
+            )*
+            problem
+        }
+    }
+}
+
+#[macro_export]
+macro_rules! add_variables {
+    ( $problem:expr, $( $var:ident ),* ) => {
+        $(
+            let $var = $problem.add_variable();
+        )*
+    };
+}
+
+#[macro_export]
+macro_rules! add_constraint {
+    ( $problem:expr, $( $var:ident => $val:expr ),*; $constant_term:expr) => {
+        {
+            let mut constraint = Constraint::new();
+            constraint.set_value($constant_term);
+            $(
+                constraint.add_term($val, $var);
+            )*
+            $problem.add_constraint(constraint);
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct Problem {
     max_variable: u32,
@@ -54,6 +94,23 @@ impl Problem {
             max_variable: 0,
             constraints: Vec::new(),
         }
+    }
+
+    pub fn add_row(&mut self, values: &[f64], constant: f64) {
+        if self.max_variable < values.len() as u32 {
+            self.max_variable = values.len() as u32;
+        }
+
+        let mut coeffs = HashMap::new();
+        for i in 0..values.len() {
+            coeffs.insert(i as u32, values[i]);
+        }
+
+        let constraint = Constraint {
+            coeffs,
+            constant
+        };
+        self.add_constraint(constraint);
     }
 
     pub fn add_variable(&mut self) -> Variable {

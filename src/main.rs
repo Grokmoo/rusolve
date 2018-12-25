@@ -16,35 +16,12 @@
 
 use std::io::Error;
 
-use rusolve::{Problem, Constraint};
+use rusolve::{Problem, create_problem};
 
 fn main() -> Result<(), Error> {
-    let mut problem = Problem::new();
-
-    let x = problem.add_variable();
-    let y = problem.add_variable();
-    let z = problem.add_variable();
-
-    let mut l1 = Constraint::new();
-    l1.set_value(8.0);
-    l1.add_term(2.0, x);
-    l1.add_term(1.0, y);
-    l1.add_term(-1.0, z);
-    problem.add_constraint(l1);
-
-    let mut l2 = Constraint::new();
-    l2.set_value(-11.0);
-    l2.add_term(-3.0, x);
-    l2.add_term(-1.0, y);
-    l2.add_term(2.0, z);
-    problem.add_constraint(l2);
-
-    let mut l3 = Constraint::new();
-    l3.set_value(-3.0);
-    l3.add_term(-2.0, x);
-    l3.add_term(1.0, y);
-    l3.add_term(2.0, z);
-    problem.add_constraint(l3);
+    let mut problem = create_problem!( [ 2.0,  1.0, -1.0;   8.0],
+                                       [-3.0, -1.0,  2.0; -11.0],
+                                       [-2.0,  1.0,  2.0;  -3.0]);
 
     let solution = problem.solve()?;
 
