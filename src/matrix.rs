@@ -1,5 +1,23 @@
+//  This file is part of rusolve, an optimizer / solver written in Rust.
+//  Copyright 2019 Jared Stephen
+//
+//  rusolve is free software: you can redistribute it and/or modify
+//  it under the terms of the GNU General Public License as published by
+//  the Free Software Foundation, either version 3 of the License, or
+//  (at your option) any later version.
+//
+//  rusolve is distributed in the hope that it will be useful,
+//  but WITHOUT ANY WARRANTY; without even the implied warranty of
+//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+//  GNU General Public License for more details.
+//
+//  You should have received a copy of the GNU General Public License
+//  along with rusolve.  If not, see <http://www.gnu.org/licenses/>
+
 use std::f64;
 use std::fmt;
+
+use log::{debug, info, warn};
 
 use crate::{Problem, Solution};
 
@@ -111,8 +129,7 @@ impl Matrix {
             self.set_value(pivot_row, col, cur_val * pivot_recip);
         }
 
-        // println!("Pivot value {},{} set to 1", pivot_row, pivot_col);
-        // println!("{:?}", self);
+        debug!("Pivot value {},{} set to 1", pivot_row, pivot_col);
 
         for row in 0..self.height {
             if row == pivot_row { continue; }
@@ -127,12 +144,16 @@ impl Matrix {
     }
 
     pub fn simplex(&mut self) -> Solution {
+        info!("Initializing simplex solver");
+        debug!("Problem:");
+        debug!("{:?}", self);
+
         let mut iteration = 0;
         loop {
-            println!("\nIteration {}", iteration);
-            println!("{:?}", self);
+            info!("\nIteration {}", iteration);
+            debug!("{:?}", self);
             if iteration >= self.width * self.height {
-                println!("Warning.  Failed to find solution after {} iterations", iteration);
+                warn!("Warning.  Failed to find solution after {} iterations", iteration);
                 break;
             }
 
@@ -140,23 +161,24 @@ impl Matrix {
             if objective_columns.is_empty() { break; }
 
             let pivot_col = self.select_pivot_column(&objective_columns);
-            println!("Selected pivot column {}", pivot_col);
+            info!("Selected pivot column {}", pivot_col);
 
             let pivot_row = match self.select_pivot_row(pivot_col) {
                 None => {
-                    println!("Unable to find a pivot row.  function is unbounded below.");
+                    warn!("Unable to find a pivot row.  function is unbounded below.");
                     break;
                 }, Some(row) => row,
             };
-            println!("Selected pivot row {}", pivot_row);
+            info!("Selected pivot row {}", pivot_row);
 
             self.simplex_pivot(pivot_row, pivot_col);
-            println!("Completed Pivot.");
+            info!("Completed pivot and moving to next iteration.");
 
             iteration += 1;
         }
 
-        println!("Simplex complete.");
+        info!("Simplex solve complete.");
+
         let objective = Some(self.value(0, self.width - 1));
         let mut coeffs = vec![0.0; self.variables];
 
@@ -185,7 +207,9 @@ impl Matrix {
             }
         }
 
-        Solution::new(coeffs, objective)
+        let solution = Solution::new(coeffs, objective);
+        info!("Solution found {:?}", solution);
+        solution
     }
 
     fn value(&self, row: usize, col: usize) -> f64 {
@@ -225,8 +249,10 @@ impl Matrix {
         let mut pivot_row = 0;
         let mut pivot_col = 0;
 
-        println!("Reducing matrix to triangular form");
-        println!("{:?}", self);
+        info!("Performing gaussian elimination");
+        debug!("{:?}", self);
+
+        info!("Reducing matrix to triangular form");
         while pivot_row < self.height && pivot_col < self.width {
             let pivot_max = self.find_pivot_max(pivot_row, pivot_col);
 
@@ -249,11 +275,11 @@ impl Matrix {
                 pivot_col += 1;
             }
 
-            println!("Step");
-            println!("{:?}", self);
+            debug!("Step");
+            debug!("{:?}", self);
         }
 
-        println!("Back substituting");
+        info!("Back substituting");
         let mut coeffs = vec![0.0; self.height];
         for row in (0..self.height).rev() {
             let mut coeff = self.value(row, self.width - 1);
@@ -264,6 +290,8 @@ impl Matrix {
             coeffs[row as usize] = coeff / self.value(row, row);
         }
 
-        Solution::new(coeffs, None)
+        let solution = Solution::new(coeffs, None);
+        info!("Solution found: {:?}", solution);
+        solution
     }
 }

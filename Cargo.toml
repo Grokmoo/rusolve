@@ -8,3 +8,7 @@ repository = "https://github.com/Grokmoo/rusolve"
 edition = "2018"
 
 [dependencies]
+log = "0.4"
+
+[dev-dependencies]
+env_logger = "0.6"

@@ -1,5 +1,5 @@
 //  This file is part of rusolve, an optimizer / solver written in Rust.
-//  Copyright 2018 Jared Stephen
+//  Copyright 2019 Jared Stephen
 //
 //  rusolve is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU General Public License as published by
@@ -16,9 +16,14 @@
 
 use std::io::Error;
 
-use rusolve::{Constraint, Problem, create_problem, create_constraint};
+use env_logger;
 
-fn main() -> Result<(), Error> {
+use rusolve::{Constraint, Problem, Solution, create_problem, create_constraint};
+
+#[test]
+fn simplex_basic() -> Result<(), Error> {
+    env_logger::init();
+
     let mut problem = create_problem!( [ 3.0, 2.0, 1.0; 10.0],
                                        [ 2.0, 5.0, 3.0; 15.0]);
 
@@ -27,7 +32,9 @@ fn main() -> Result<(), Error> {
 
     let solution = problem.solve()?;
 
-    println!("Solution:");
-    println!("{:#?}", solution);
+    let correct_coeffs = vec![0.0, 0.0, 5.0];
+    let correct_solution = Solution::new(correct_coeffs, Some(-20.0));
+
+    assert_eq!(solution, correct_solution);
     Ok(())
 }

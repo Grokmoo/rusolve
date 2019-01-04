@@ -1,5 +1,5 @@
 //  This file is part of rusolve, an optimizer / solver written in Rust.
-//  Copyright 2018 Jared Stephen
+//  Copyright 2019 Jared Stephen
 //
 //  rusolve is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU General Public License as published by
