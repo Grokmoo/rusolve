@@ -19,15 +19,15 @@ use std::io::Error;
 use rusolve::{Constraint, Problem, create_problem, create_constraint};
 
 fn main() -> Result<(), Error> {
-    let mut problem = create_problem!( [ 1.0,  1.0,  1.0;   10.0],
-                                       [ 4.0, -3.0,  1.0;    3.0],
-                                       [ 2.0,  1.0, -1.0;   10.0]);
+    let mut problem = create_problem!( [ 3.0, 2.0, 1.0; 10.0],
+                                       [ 2.0, 5.0, 3.0; 15.0]);
 
-    let obj = create_constraint!(-2.0, -3.0, -1.0; 0.0);
+    let obj = create_constraint!(-2.0, -3.0, -4.0; 0.0);
     problem.set_objective(obj);
 
     let solution = problem.solve()?;
 
-    println!("Solution: {:#?}", solution);
+    println!("Solution:");
+    println!("{:#?}", solution);
     Ok(())
 }
