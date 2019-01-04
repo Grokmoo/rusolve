@@ -22,15 +22,81 @@ use std::collections::HashMap;
 use crate::Matrix;
 
 #[derive(Copy, Clone, Debug)]
-
 pub struct Variable {
     index: u32,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum ObjectiveKind {
+    Minimize,
+    Maximize,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum ConstraintKind {
+    GreaterThanOrEqualTo,
+    EqualTo,
+    LessThanOrEqualTo,
+}
+
+#[derive(Debug)]
+pub struct Expression {
+    coeffs: HashMap<u32, f64>,
+}
+
+impl Default for Expression {
+    fn default() -> Self { Expression { coeffs: HashMap::new() } }
+}
+
+impl Expression {
+    pub fn new(coeffs: &[f64]) -> Expression {
+        let mut expr = Expression::default();
+
+        for (index, coeff) in coeffs.iter().enumerate() {
+            expr.coeffs.insert(index as u32, *coeff);
+        }
+
+        expr
+    }
+
+    pub fn add_coeffs(&mut self, coeffs: &[f64]) {
+        for (index, coeff) in coeffs.iter().enumerate() {
+            self.coeffs.insert(index as u32, *coeff);
+        }
+    }
+
+    pub fn add_term(&mut self, coeff: f64, variable: Variable) {
+        self.coeffs.insert(variable.index, coeff);
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item=(&u32, &f64)> {
+        self.coeffs.iter()
+    }
+}
+
 #[derive(Debug)]
 pub struct Constraint {
-    coeffs: HashMap<u32, f64>,
+    expr: Expression,
+    kind: ConstraintKind,
     constant: f64,
+}
+
+impl Constraint {
+    pub fn new(expr: Expression, kind: ConstraintKind, constant: f64) -> Constraint {
+        Constraint {
+            expr,
+            kind,
+            constant,
+        }
+    }
+
+    pub fn kind(&self) -> ConstraintKind { self.kind }
+
+    pub fn expr(&self) -> &Expression { &self.expr }
+
+    pub fn constant(&self) -> f64 {
+        self.constant
+    }
 }
 
 pub struct Solution {
@@ -76,33 +142,84 @@ impl fmt::Debug for Solution {
 
 #[macro_export]
 macro_rules! create_problem {
-    ( $( [ $($val:expr),*; $constant:expr ] ),* ) => {
+    ( $( [ $($val:expr),* ; == $constant:expr ] ),* ) => {
         {
             let mut problem = Problem::new();
             $(
-                let mut values = Vec::new();
-                $(
-                    values.push($val);
-                )*
-                problem.add_row(&values, $constant);
+                let constraint = create_constraint!($($val),*; == $constant);
+                problem.add_constraint(constraint);
             )*
             problem
+        }
+    };
+    ( $( [ $($val:expr),* ; <= $constant:expr ] ),* ) => {
+        {
+            let mut problem = Problem::new();
+            $(
+                let constraint = create_constraint!($($val),*; <= $constant);
+                problem.add_constraint(constraint);
+            )*
+            problem
+        }
+    };
+    ( $( [ $($val:expr),* ; >= $constant:expr ] ),* ) => {
+        {
+            let mut problem = Problem::new();
+            $(
+                let constraint = create_constraint!($($val),*; >= $constant);
+                problem.add_constraint(constraint);
+            )*
+            problem
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! create_expr {
+    ( $($val:expr),* ) => {
+        {
+            let mut coeffs = Vec::new();
+            $(
+                coeffs.push($val);
+            )*
+            Expression::new(&coeffs)
         }
     }
 }
 
 #[macro_export]
 macro_rules! create_constraint {
-    ( $($val:expr),*; $constant:expr ) => {
+    ( $($val:expr),* ; <= $constant:expr ) => {
         {
-            let mut constraint = Constraint::new();
-            constraint.set_value($constant);
+            let mut expr = Expression::default();
             let mut coeffs = Vec::new();
             $(
                 coeffs.push($val);
             )*
-                constraint.add_coeffs(&coeffs);
-            constraint
+            expr.add_coeffs(&coeffs);
+            Constraint::new(expr, ConstraintKind::LessThanOrEqualTo, $constant)
+        }
+    };
+    ( $($val:expr),* ; >= $constant:expr ) => {
+        {
+            let mut expr = Expression::default();
+            let mut coeffs = Vec::new();
+            $(
+                coeffs.push($val);
+            )*
+            expr.add_coeffs(&coeffs);
+            Constraint::new(expr, ConstraintKind::GreaterThanOrEqualTo, $constant)
+        }
+    };
+    ( $($val:expr),* ; == $constant:expr ) => {
+        {
+            let mut expr = Expression::default();
+            let mut coeffs = Vec::new();
+            $(
+                coeffs.push($val);
+            )*
+            expr.add_coeffs(&coeffs);
+            Constraint::new(expr, ConstraintKind::EqualTo, $constant)
         }
     }
 }
@@ -116,25 +233,18 @@ macro_rules! add_variables {
     };
 }
 
-#[macro_export]
-macro_rules! add_constraint {
-    ( $problem:expr, $( $var:ident => $val:expr ),*; $constant_term:expr) => {
-        {
-            let mut constraint = Constraint::new();
-            constraint.set_value($constant_term);
-            $(
-                constraint.add_term($val, $var);
-            )*
-            $problem.add_constraint(constraint);
-        }
-    }
+#[derive(Debug)]
+struct Objective {
+    expr: Expression,
+    kind: ObjectiveKind,
 }
 
 #[derive(Debug)]
 pub struct Problem {
     max_variable: u32,
     constraints: Vec<Constraint>,
-    objective: Option<Constraint>,
+    objective: Option<Objective>,
+
 }
 
 impl Problem {
@@ -150,36 +260,43 @@ impl Problem {
         self.constraints.len()
     }
 
+    pub fn constraint(&self, index: usize) -> &Constraint {
+        &self.constraints[index]
+    }
+
     pub fn constraints(&self) -> &[Constraint] {
         &self.constraints
     }
 
-    pub fn objective(&self) -> Option<&Constraint> {
-        self.objective.as_ref()
+    pub fn objective_kind(&self) -> Option<ObjectiveKind> {
+        match &self.objective {
+            None => None,
+            Some(obj) => Some(obj.kind),
+        }
+    }
+
+    pub fn objective(&self) -> Option<&Expression> {
+        match &self.objective {
+            None => None,
+            Some(obj) => Some(&obj.expr)
+        }
     }
 
     pub fn num_variables(&self) -> usize {
         self.max_variable as usize
     }
 
-    pub fn set_objective(&mut self, objective: Constraint) {
-        self.objective = Some(objective);
+    pub fn set_objective(&mut self, expr: Expression, kind: ObjectiveKind) {
+        self.objective = Some(Objective { expr, kind });
     }
 
-    pub fn add_row(&mut self, values: &[f64], constant: f64) {
+    pub fn add_row(&mut self, values: &[f64], kind: ConstraintKind, constant: f64) {
         if self.max_variable < values.len() as u32 {
             self.max_variable = values.len() as u32;
         }
 
-        let mut coeffs = HashMap::new();
-        for i in 0..values.len() {
-            coeffs.insert(i as u32, values[i]);
-        }
-
-        let constraint = Constraint {
-            coeffs,
-            constant
-        };
+        let expr = Expression::new(values);
+        let constraint = Constraint::new(expr, kind, constant);
         self.add_constraint(constraint);
     }
 
@@ -194,42 +311,14 @@ impl Problem {
     }
 
     pub fn add_constraint(&mut self, constraint: Constraint) {
+        if self.max_variable < constraint.expr.coeffs.len() as u32 {
+            self.max_variable = constraint.expr.coeffs.len() as u32;
+        }
         self.constraints.push(constraint);
     }
 
     pub fn solve(&self) -> Result<Solution, Error> {
-        let mut matrix = Matrix::new(self);
+        let mut matrix = Matrix::new_simplex(self)?;
         Ok(matrix.simplex())
-    }
-}
-
-impl Constraint {
-    pub fn new() -> Constraint {
-        Constraint {
-            coeffs: HashMap::new(),
-            constant: 0.0,
-        }
-    }
-
-    pub fn iter(&self) -> impl Iterator<Item=(&u32, &f64)> {
-        self.coeffs.iter()
-    }
-
-    pub fn constant(&self) -> f64 {
-        self.constant
-    }
-
-    pub fn set_value(&mut self, constant: f64) {
-        self.constant = constant;
-    }
-
-    pub fn add_coeffs(&mut self, coeffs: &[f64]) {
-        for (index, coeff) in coeffs.iter().enumerate() {
-            self.coeffs.insert(index as u32, *coeff);
-        }
-    }
-
-    pub fn add_term(&mut self, coeff: f64, variable: Variable) {
-        self.coeffs.insert(variable.index, coeff);
     }
 }

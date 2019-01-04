@@ -17,5 +17,6 @@
 pub mod matrix;
 pub mod problem;
 
-pub use crate::problem::{Variable, Constraint, Problem, Solution};
+pub use crate::problem::{Variable, Constraint, ConstraintKind,
+    ObjectiveKind, Expression, Problem, Solution};
 pub use crate::matrix::Matrix;

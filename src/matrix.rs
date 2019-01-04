@@ -14,17 +14,19 @@
 //  You should have received a copy of the GNU General Public License
 //  along with rusolve.  If not, see <http://www.gnu.org/licenses/>
 
+use std::io::{Error, ErrorKind};
 use std::f64;
 use std::fmt;
 
 use log::{debug, info, warn};
 
-use crate::{Problem, Solution};
+use crate::{Problem, Solution, ObjectiveKind, ConstraintKind};
 
 pub struct Matrix {
     width: usize,
     height: usize,
     variables: usize,
+    objective_kind: ObjectiveKind,
     coeffs: Vec<f64>,
 }
 
@@ -41,14 +43,22 @@ impl fmt::Debug for Matrix {
 }
 
 impl Matrix {
-    pub fn new(problem: &Problem) -> Matrix {
+    pub fn new_simplex(problem: &Problem) -> Result<Matrix, Error> {
+        if problem.objective_kind().is_none() {
+            return Err(Error::new(ErrorKind::InvalidInput,
+                "Must set an objective function for simplex solver."));
+        }
+
+        info!("Set up simplex problem with {} constraints and {} variables",
+              problem.num_constraints(), problem.num_variables());
+
         let height = problem.num_constraints() + 1;
         let width = problem.num_variables() + problem.num_constraints() + 2;
         let mut coeffs = vec![0.0;width*height];
 
         let mut row = 1;
         for constraint in problem.constraints().iter() {
-            for (index, value) in constraint.iter() {
+            for (index, value) in constraint.expr().iter() {
                 coeffs[1 + *index as usize + row * width] = *value;
             }
             coeffs[width - 1 + row * width] = constraint.constant();
@@ -56,44 +66,56 @@ impl Matrix {
             row += 1;
         }
 
-        let slack_start_row = problem.num_variables() + 1;
-        for i in 0..problem.num_constraints() {
-            coeffs[i + slack_start_row + (i + 1) * width] = 1.0;
-        }
-
         if let Some(objective) = problem.objective() {
             let row = 0;
             for (index, value) in objective.iter(){
                 coeffs[1 + *index as usize + row * width] = *value * -1.0;
             }
-            coeffs[width - 1 + row * width] = objective.constant();
             coeffs[0 + row * width] = 1.0;
         }
 
-        Matrix {
+        let mut matrix = Matrix {
             width,
-            height,
+            height, objective_kind: problem.objective_kind().unwrap(),
             variables: problem.num_variables(),
             coeffs,
+        };
+        info!("Set up initial problem.");
+        debug!("{:?}", matrix);
+
+        let slack_start_row = problem.num_variables() + 1;
+        for (i, constraint) in problem.constraints().iter().enumerate() {
+            let value = match constraint.kind() {
+                ConstraintKind::LessThanOrEqualTo => 1.0,
+                ConstraintKind::GreaterThanOrEqualTo => -1.0,
+                ConstraintKind::EqualTo => -1.0,
+            };
+            matrix.coeffs[i + slack_start_row + (i + 1) * width] = value;
         }
+        info!("Set up slack variables");
+        debug!("{:?}", matrix);
+
+        Ok(matrix)
     }
 
-    fn find_positive_objective_columns(&self) -> Vec<usize> {
+    fn find_valid_objective_columns(&self) -> Vec<usize> {
         let mut result = Vec::new();
         for col in 1..self.width {
             let value = self.value(0, col);
-            if value > 0.0 {
-                result.push(col);
+            match self.objective_kind {
+                ObjectiveKind::Minimize => if value > 0.0 { result.push(col); }
+                ObjectiveKind::Maximize => if value < 0.0 { result.push(col); }
             }
         }
 
         result
     }
 
-    fn select_pivot_column(&self, positive_cols: &[usize]) -> usize {
-        if positive_cols.is_empty() { panic!(); }
+    fn select_pivot_column(&self, valid_cols: &[usize]) -> usize {
+        if valid_cols.is_empty() { panic!(); }
 
-        positive_cols[0]
+        // TODO select the best column through an algorithm such as devex
+        valid_cols[0]
     }
 
     fn select_pivot_row(&self, pivot_col: usize) -> Option<usize> {
@@ -157,7 +179,7 @@ impl Matrix {
                 break;
             }
 
-            let objective_columns = self.find_positive_objective_columns();
+            let objective_columns = self.find_valid_objective_columns();
             if objective_columns.is_empty() { break; }
 
             let pivot_col = self.select_pivot_column(&objective_columns);

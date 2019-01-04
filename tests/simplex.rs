@@ -15,26 +15,52 @@
 //  along with rusolve.  If not, see <http://www.gnu.org/licenses/>
 
 use std::io::Error;
+use std::sync::{Once, ONCE_INIT};
 
 use env_logger;
 
-use rusolve::{Constraint, Problem, Solution, create_problem, create_constraint};
+use rusolve::{Constraint, ConstraintKind, Problem, Expression, ObjectiveKind,
+    Solution, create_problem, create_expr, create_constraint};
+
+static INIT: Once = ONCE_INIT;
+
+fn setup() -> Result<(), Error> {
+    INIT.call_once(|| {
+        env_logger::init()
+    });
+
+    Ok(())
+}
 
 #[test]
-fn simplex_basic() -> Result<(), Error> {
-    env_logger::init();
+fn simplex_leq() -> Result<(), Error> {
+    setup()?;
+    let mut problem = create_problem!( [ 3.0, 2.0, 1.0; >= 10.0],
+                                       [ 2.0, 5.0, 3.0; >= 15.0]);
+    problem.set_objective(create_expr!(2.0, 3.0, 4.0), ObjectiveKind::Minimize);
 
-    let mut problem = create_problem!( [ 3.0, 2.0, 1.0; 10.0],
-                                       [ 2.0, 5.0, 3.0; 15.0]);
+    assert_eq!(problem.solve()?, Solution::new(vec![0.0, 0.0, 5.0], Some(-20.0)));
+    Ok(())
+}
 
-    let obj = create_constraint!(-2.0, -3.0, -4.0; 0.0);
-    problem.set_objective(obj);
+#[test]
+fn simplex_minimize() -> Result<(), Error> {
+    setup()?;
+    let mut problem = create_problem!( [ 3.0, 2.0, 1.0; <= 10.0],
+                                       [ 2.0, 5.0, 3.0; <= 15.0]);
+    problem.set_objective(create_expr!(-2.0, -3.0, -4.0), ObjectiveKind::Minimize);
 
-    let solution = problem.solve()?;
+    assert_eq!(problem.solve()?, Solution::new(vec![0.0, 0.0, 5.0], Some(-20.0)));
+    Ok(())
+}
 
-    let correct_coeffs = vec![0.0, 0.0, 5.0];
-    let correct_solution = Solution::new(correct_coeffs, Some(-20.0));
+#[test]
+fn simplex_maximize() -> Result<(), Error> {
+    setup()?;
+    let mut problem = create_problem!( [ 3.0, 2.0, 1.0; <= 10.0 ],
+                                       [ 2.0, 5.0, 3.0; <= 15.0 ]);
+    problem.set_objective(create_expr!(2.0, 3.0, 4.0), ObjectiveKind::Maximize);
 
-    assert_eq!(solution, correct_solution);
+    assert_eq!(problem.solve()?, Solution::new(vec![0.0, 0.0, 5.0], Some(20.0)));
     Ok(())
 }
