@@ -16,7 +16,7 @@
 
 use log::{debug, info};
 
-use crate::{Matrix, Problem, Solution, Result, SolverError};
+use crate::{Matrix, Row, Col, Problem, Solution, Result, SolverError};
 
 pub fn setup_matrix(problem: &Problem) -> Result<Matrix> {
     if problem.objective_kind().is_some() {
@@ -55,14 +55,14 @@ pub fn setup_matrix(problem: &Problem) -> Result<Matrix> {
 }
 
 pub fn gaussian_elimination(matrix: &mut Matrix) -> Result<Solution> {
-    let mut pivot_row = 0;
-    let mut pivot_col = 0;
+    let mut pivot_row = matrix.first_row();
+    let mut pivot_col = matrix.first_col();
 
     info!("Performing gaussian elimination");
     debug!("{:?}", matrix);
 
     info!("Reducing matrix to triangular form");
-    while pivot_row < matrix.height() && pivot_col < matrix.width() {
+    while pivot_row.is_valid(matrix) && pivot_col.is_valid(matrix) {
         let pivot_max = find_pivot_max(matrix, pivot_row, pivot_col);
 
         if matrix.value(pivot_max, pivot_col) == 0.0 {
@@ -70,11 +70,11 @@ pub fn gaussian_elimination(matrix: &mut Matrix) -> Result<Solution> {
         } else {
             matrix.swap_rows(pivot_row, pivot_max);
 
-            for row in (pivot_row + 1) .. matrix.height() {
+            for row in matrix.rows_from(pivot_row + 1) {
                 let coeff = matrix.value(row, pivot_col) / matrix.value(pivot_row, pivot_col);
                 matrix.set_value(row, pivot_col, 0.0);
 
-                for col in (pivot_col + 1) .. matrix.width() {
+                for col in matrix.cols_from(pivot_col + 1) {
                     let value = matrix.value(row, col) - matrix.value(pivot_row, col) * coeff;
                     matrix.set_value(row, col, value);
                 }
@@ -94,13 +94,16 @@ pub fn gaussian_elimination(matrix: &mut Matrix) -> Result<Solution> {
 
     info!("Back substituting");
     let mut coeffs = vec![0.0; matrix.height()];
-    for row in (0..matrix.height()).rev() {
-        let mut coeff = matrix.value(row, matrix.width() - 1);
-        for col in (row + 1) .. matrix.height() {
-            coeff -= matrix.value(row, col) * coeffs[col as usize];
+    for row in matrix.rows().rev() {
+        let mut coeff = matrix.value(row, matrix.last_col());
+        for col in matrix.cols_range(Col::from(row + 1), matrix.last_col()) {
+            coeff -= matrix.value(row, col) * coeffs[col.index()];
         }
 
-        coeffs[row as usize] = coeff / matrix.value(row, row);
+        coeffs[row.index()] = coeff / matrix.value(row, Col::from(row));
+
+        debug!("Current solution:");
+        debug!("{:?}", coeffs);
     }
 
     let solution = Solution::new(coeffs, None);
@@ -108,10 +111,10 @@ pub fn gaussian_elimination(matrix: &mut Matrix) -> Result<Solution> {
     Ok(solution)
 }
 
-fn find_pivot_max(matrix: &Matrix, cur_pivot_row: usize, pivot_col: usize) -> usize {
+fn find_pivot_max(matrix: &Matrix, cur_pivot_row: Row, pivot_col: Col) -> Row {
     let mut max_value = 0.0;
     let mut pivot_max = cur_pivot_row;
-    for row in cur_pivot_row .. matrix.height() {
+    for row in matrix.rows_from(cur_pivot_row) {
         let cur_value = matrix.value(row, pivot_col).abs();
         if cur_value > max_value {
             max_value = cur_value;
