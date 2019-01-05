@@ -16,10 +16,9 @@
 
 use std::f64;
 use std::fmt;
-use std::io::{Error};
 use std::collections::HashMap;
 
-use crate::Matrix;
+use crate::{Result, simplex, gaussian_elimination};
 
 #[derive(Copy, Clone, Debug)]
 pub struct Variable {
@@ -317,8 +316,12 @@ impl Problem {
         self.constraints.push(constraint);
     }
 
-    pub fn solve(&self) -> Result<Solution, Error> {
-        let mut matrix = Matrix::new_simplex(self)?;
-        Ok(matrix.simplex())
+    pub fn solve(&self) -> Result<Solution> {
+        let mut matrix = match self.objective {
+            None => gaussian_elimination::setup_matrix(self)?,
+            Some(_) => simplex::setup_matrix(self)?,
+        };
+
+        matrix.solve()
     }
 }

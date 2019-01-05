@@ -14,9 +14,83 @@
 //  You should have received a copy of the GNU General Public License
 //  along with rusolve.  If not, see <http://www.gnu.org/licenses/>
 
+use std::fmt;
+use std::error;
+
 pub mod matrix;
 pub mod problem;
+
+mod gaussian_elimination;
+mod simplex;
 
 pub use crate::problem::{Variable, Constraint, ConstraintKind,
     ObjectiveKind, Expression, Problem, Solution};
 pub use crate::matrix::Matrix;
+
+pub type Result<T> = std::result::Result<T, SolverError>;
+
+#[derive(Debug, Clone)]
+pub struct SolverError {
+    message: String,
+    kind: ErrorKind,
+}
+
+impl SolverError {
+    pub fn new<T, M: Into<String>>(kind: ErrorKind, message: M) -> Result<T> {
+        Err(SolverError {
+            message: message.into(),
+            kind,
+        })
+    }
+
+    pub fn invalid_constraint<T, M: Into<String>>(message: M) -> Result<T> {
+        SolverError::new(ErrorKind::InvalidConstraint, message)
+    }
+
+    pub fn invalid_objective<T, M: Into<String>>(message: M) -> Result<T> {
+        SolverError::new(ErrorKind::InvalidObjective, message)
+    }
+
+    pub fn infeasible<T, M: Into<String>>(message: M) -> Result<T> {
+        SolverError::new(ErrorKind::Infeasible, message)
+    }
+
+    pub fn underspecified<T, M: Into<String>>(message: M) -> Result<T> {
+        SolverError::new(ErrorKind::Underspecified, message)
+    }
+
+    pub fn unable_to_solve<T, M: Into<String>>(message: M) -> Result<T> {
+        SolverError::new(ErrorKind::UnableToSolve, message)
+    }
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum ErrorKind {
+    InvalidConstraint,
+    InvalidObjective,
+    Infeasible,
+    Underspecified,
+    UnableToSolve,
+}
+
+impl fmt::Display for ErrorKind {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+impl fmt::Display for SolverError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}: {}", self.kind, self.message)
+    }
+}
+
+impl error::Error for SolverError {
+    fn description(&self) -> &str {
+        &self.message
+    }
+
+    fn cause(&self) -> Option<&error::Error> {
+        None
+    }
+}
