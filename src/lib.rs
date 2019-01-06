@@ -62,6 +62,18 @@ impl SolverError {
     pub fn unable_to_solve<T, M: Into<String>>(message: M) -> Result<T> {
         SolverError::new(ErrorKind::UnableToSolve, message)
     }
+
+    pub fn invalid_solution<T, M: Into<String>>(message: M) -> Result<T> {
+        SolverError::new(ErrorKind::InvalidSolution, message)
+    }
+
+    pub fn kind(&self) -> ErrorKind {
+        self.kind
+    }
+
+    pub fn message(&self) -> &str {
+        &self.message
+    }
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -71,6 +83,7 @@ pub enum ErrorKind {
     Infeasible,
     Underspecified,
     UnableToSolve,
+    InvalidSolution,
 }
 
 impl fmt::Display for ErrorKind {

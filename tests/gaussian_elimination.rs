@@ -15,10 +15,10 @@
 //  along with rusolve.  If not, see <http://www.gnu.org/licenses/>
 
 use rusolve::{Constraint, ConstraintKind, Problem, Expression, Result,
-    Solution, create_problem, create_constraint};
+    create_problem, create_constraint, ErrorKind};
 
 mod common;
-use crate::common::setup;
+use crate::common::{setup, solution_eq, solution_err};
 
 #[test]
 fn gaussian_lin_dep() -> Result<()> {
@@ -26,8 +26,7 @@ fn gaussian_lin_dep() -> Result<()> {
     let problem = create_problem!( [2.0, 1.0, 1.0; == 3.0],
                                    [4.0, 2.0, 2.0; == 6.0],
                                    [1.0, 0.0, 1.0; == 1.5]);
-    assert!(problem.solve().is_err());
-    Ok(())
+    solution_err(problem, ErrorKind::Underspecified)
 }
 
 #[test]
@@ -37,8 +36,7 @@ fn gaussian_overspecified() -> Result<()> {
                                    [1.0, 0.0, 1.0; == 1.5],
                                    [2.0, 1.0, 0.0; == 2.0],
                                    [4.0, 2.0, 2.0; == 6.0]);
-    assert!(problem.solve().is_err());
-    Ok(())
+    solution_err(problem, ErrorKind::InvalidConstraint)
 }
 
 #[test]
@@ -46,8 +44,7 @@ fn gaussian_underspecified() -> Result<()> {
     setup()?;
     let problem = create_problem!( [2.0, 1.0, 1.0; == 3.0],
                                    [1.0, 0.0, 1.0; == 1.5]);
-    assert!(problem.solve().is_err());
-    Ok(())
+    solution_err(problem, ErrorKind::InvalidConstraint)
 }
 
 #[test]
@@ -56,8 +53,7 @@ fn gaussian_elim_simple() -> Result<()> {
     let problem = create_problem!( [2.0, 1.0, 1.0; == 3.0],
                                    [1.0, 0.0, 1.0; == 1.5],
                                    [2.0, 1.0, 0.0; == 2.0]);
-    assert_eq!(problem.solve()?, Solution::new(vec![0.5, 1.0, 1.0], None));
-    Ok(())
+    solution_eq(problem, vec![0.5, 1.0, 1.0], None)
 }
 
 #[test]
@@ -66,6 +62,5 @@ fn gaussian_elim_reduced() -> Result<()> {
     let problem = create_problem!( [2.0, 1.0, 1.0; == 3.0],
                                    [0.0, 1.0, 1.0; == 2.0],
                                    [0.0, 0.0, 1.0; == 1.0]);
-    assert_eq!(problem.solve()?, Solution::new(vec![0.5, 1.0, 1.0], None));
-    Ok(())
+    solution_eq(problem, vec![0.5, 1.0, 1.0], None)
 }

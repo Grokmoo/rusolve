@@ -14,11 +14,20 @@
 //  You should have received a copy of the GNU General Public License
 //  along with rusolve.  If not, see <http://www.gnu.org/licenses/>
 
-use rusolve::{Constraint, ConstraintKind, Problem, Expression, ObjectiveKind, Result,
-    Solution, create_problem, create_expr, create_constraint};
+use rusolve::{Constraint, ConstraintKind, Problem, Expression, ObjectiveKind, Result, ErrorKind,
+    create_problem, create_expr, create_constraint};
 
 mod common;
-use crate::common::setup;
+use crate::common::{setup, solution_eq, solution_err};
+
+#[test]
+fn simplex_ge() -> Result<()> {
+    setup()?;
+    let mut problem = create_problem!( [1.0, 1.0; <= 10.0],
+                                       [1.0, 2.0; <= 15.0]);
+    problem.set_objective(create_expr!(2.0, 3.0), ObjectiveKind::Maximize);
+    solution_eq(problem, vec![5.0, 5.0], Some(25.0))
+}
 
 #[test]
 fn simplex_minimize() -> Result<()> {
@@ -26,18 +35,22 @@ fn simplex_minimize() -> Result<()> {
     let mut problem = create_problem!( [ 3.0, 2.0, 1.0; <= 10.0],
                                        [ 2.0, 5.0, 3.0; <= 15.0]);
     problem.set_objective(create_expr!(-2.0, -3.0, -4.0), ObjectiveKind::Minimize);
-
-    assert_eq!(problem.solve()?, Solution::new(vec![0.0, 0.0, 5.0], Some(-20.0)));
-    Ok(())
+    solution_eq(problem, vec![0.0, 0.0, 5.0], Some(-20.0))
 }
 
 #[test]
 fn simplex_maximize() -> Result<()> {
     setup()?;
-    let mut problem = create_problem!( [ 3.0, 2.0, 1.0; <= 10.0 ],
-                                       [ 2.0, 5.0, 3.0; <= 15.0 ]);
+    let mut problem = create_problem!( [ 3.0, 2.0, 1.0; == 10.0 ],
+                                       [ 2.0, 5.0, 3.0; == 15.0 ]);
     problem.set_objective(create_expr!(2.0, 3.0, 4.0), ObjectiveKind::Maximize);
+    solution_eq(problem, vec![2.14285714, 0.0, 3.57142857], Some(18.5714285))
+}
 
-    assert_eq!(problem.solve()?, Solution::new(vec![0.0, 0.0, 5.0], Some(20.0)));
-    Ok(())
+#[test]
+fn simplex_unbounded() -> Result<()> {
+    setup()?;
+    let mut problem = create_problem!( [1.0, 1.0, 1.0; >= 0.0 ]);
+    problem.set_objective(create_expr!(1.0, 1.0, 1.0), ObjectiveKind::Maximize);
+    solution_err(problem, ErrorKind::Infeasible)
 }

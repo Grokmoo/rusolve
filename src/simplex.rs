@@ -61,7 +61,7 @@ pub fn setup_matrix(problem: &Problem) -> Result<Matrix> {
         let value = match constraint.kind() {
             ConstraintKind::LessThanOrEqualTo => 1.0,
             ConstraintKind::GreaterThanOrEqualTo => -1.0,
-            ConstraintKind::EqualTo => -1.0,
+            ConstraintKind::EqualTo => 0.0,
         };
         matrix.set_value_raw(i + 1, i + slack_start_row, value);
     }
@@ -107,6 +107,10 @@ pub fn simplex(matrix: &mut Matrix) -> Result<Solution> {
 
     info!("Simplex solve complete.");
 
+    produce_solution(matrix)
+}
+
+fn produce_solution(matrix: &Matrix) -> Result<Solution> {
     let objective = Some(matrix.value(matrix.first_row(), matrix.last_col()));
     let mut coeffs = vec![0.0; matrix.num_variables()];
 
@@ -188,21 +192,14 @@ fn select_pivot_row(matrix: &Matrix, pivot_col: Col) -> Option<Row> {
 
 fn simplex_pivot(matrix: &mut Matrix, pivot_row: Row, pivot_col: Col) {
     let pivot_recip = 1.0 / matrix.value(pivot_row, pivot_col);
-    for col in matrix.cols() {
-        let cur_val = matrix.value(pivot_row, col);
-        matrix.set_value(pivot_row, col, cur_val * pivot_recip);
-    }
+    matrix.multiply_row(pivot_row, pivot_recip);
 
     debug!("Pivot value {:?},{:?} set to 1", pivot_row, pivot_col);
 
     for row in matrix.rows() {
         if row == pivot_row { continue; }
 
-        let delta = -1.0 * matrix.value(row, pivot_col);
-
-        for col in matrix.cols() {
-            let cur_val = matrix.value(row, col);
-            matrix.set_value(row, col, cur_val + delta * matrix.value(pivot_row, col));
-        }
+        let mult = -1.0 * matrix.value(row, pivot_col);
+        matrix.add_row(pivot_row, row, mult);
     }
 }

@@ -124,6 +124,18 @@ impl Solution {
             objective,
         }
     }
+
+    pub fn value(&self, index: usize) -> f64 {
+        self.coeffs[index]
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item=&f64> {
+        self.coeffs.iter()
+    }
+
+    pub fn objective(&self) -> Option<f64> {
+        self.objective
+    }
 }
 
 impl fmt::Debug for Solution {
