@@ -23,44 +23,43 @@ use crate::common::{setup, solution_eq, solution_err};
 #[test]
 fn gaussian_lin_dep() -> Result<()> {
     setup()?;
-    let problem = create_problem!( [2.0, 1.0, 1.0; == 3.0],
-                                   [4.0, 2.0, 2.0; == 6.0],
-                                   [1.0, 0.0, 1.0; == 1.5]);
+    let problem = create_problem!( [2.0, 1.0, 1.0 ;eq; 3.0],
+                                   [4.0, 2.0, 2.0 ;eq; 6.0],
+                                   [1.0, 0.0, 1.0 ;eq; 1.5]);
     solution_err(problem, ErrorKind::Underspecified)
 }
 
 #[test]
 fn gaussian_overspecified() -> Result<()> {
     setup()?;
-    let problem = create_problem!( [2.0, 1.0, 1.0; == 3.0],
-                                   [1.0, 0.0, 1.0; == 1.5],
-                                   [2.0, 1.0, 0.0; == 2.0],
-                                   [4.0, 2.0, 2.0; == 6.0]);
+    let problem = create_problem!( [2.0, 1.0, 1.0 ;eq; 3.0],
+                                   [1.0, 0.0, 1.0 ;eq; 1.5],
+                                   [2.0, 1.0, 0.0 ;eq; 2.0],
+                                   [4.0, 2.0, 2.0 ;eq; 6.0]);
     solution_err(problem, ErrorKind::InvalidConstraint)
 }
 
 #[test]
 fn gaussian_underspecified() -> Result<()> {
     setup()?;
-    let problem = create_problem!( [2.0, 1.0, 1.0; == 3.0],
-                                   [1.0, 0.0, 1.0; == 1.5]);
+    let problem = create_problem!( [2.0, 1.0, 1.0 ;eq; 3.0],
+                                   [1.0, 0.0, 1.0 ;eq; 1.5]);
     solution_err(problem, ErrorKind::InvalidConstraint)
 }
 
 #[test]
 fn gaussian_elim_simple() -> Result<()> {
     setup()?;
-    let problem = create_problem!( [2.0, 1.0, 1.0; == 3.0],
-                                   [1.0, 0.0, 1.0; == 1.5],
-                                   [2.0, 1.0, 0.0; == 2.0]);
-    solution_eq(problem, vec![0.5, 1.0, 1.0], None)
-}
+    let problem = create_problem!( [2.0, 1.0, 1.0 ;eq; 3.0],
+                                   [1.0, 0.0, 1.0 ;eq; 1.5],
+                                   [2.0, 1.0, 0.0 ;eq; 2.0]);
+    solution_eq(problem, vec![0.5, 1.0, 1.0], None)}
 
 #[test]
 fn gaussian_elim_reduced() -> Result<()> {
     setup()?;
-    let problem = create_problem!( [2.0, 1.0, 1.0; == 3.0],
-                                   [0.0, 1.0, 1.0; == 2.0],
-                                   [0.0, 0.0, 1.0; == 1.0]);
+    let problem = create_problem!( [2.0, 1.0, 1.0 ;eq; 3.0],
+                                   [0.0, 1.0, 1.0 ;eq; 2.0],
+                                   [0.0, 0.0, 1.0 ;eq; 1.0]);
     solution_eq(problem, vec![0.5, 1.0, 1.0], None)
 }

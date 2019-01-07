@@ -21,80 +21,124 @@ use log::{debug, info, warn};
 use crate::{ConstraintKind, Row, Col, Matrix, Problem, Solution, ObjectiveKind,
     Result, SolverError};
 
-pub fn setup_matrix(problem: &Problem) -> Result<Matrix> {
-    if problem.objective_kind().is_none() {
-        return SolverError::invalid_objective("Must set an objective for simplex.");
+const OPTIMALITY_TOL: f64 = 1e-6;
+
+pub fn solve(problem: &Problem) -> Result<Solution> {
+    let num_variables = problem.num_variables();
+    let objective_kind = match problem.objective_kind() {
+        None => {
+            return SolverError::invalid_objective("Must set an objective for simplex.");
+        }, Some(kind) => kind,
+    };
+
+    let (mut matrix, num_artificial) = setup_matrix(problem)?;
+    info!("Set up {} artificial variables", num_artificial);
+
+    info!("Performing Phase I simplex solve");
+    let phase1 = simplex(&mut matrix, num_variables, 2, ObjectiveKind::Minimize)?;
+
+    if let Some(solution) = phase1.objective() {
+        if solution.abs() > OPTIMALITY_TOL {
+            return SolverError::infeasible("No feasible solution exists.");
+        }
     }
 
+    info!("Performing Phase II simplex solve");
+    matrix.sub(1, 1);
+    let last_col = matrix.last_col();
+    for row in matrix.rows() {
+        for col in matrix.cols_range(last_col - num_artificial, last_col) {
+            matrix.set_value(row, col, 0.0);
+        }
+    }
+
+    info!("Phase 2 Matrix:");
+    info!("{:?}", matrix);
+    simplex(&mut matrix, num_variables, 1, objective_kind)
+}
+
+pub fn setup_matrix(problem: &Problem) -> Result<(Matrix, usize)> {
     info!("Set up simplex problem with {} constraints and {} variables",
           problem.num_constraints(), problem.num_variables());
 
-    let height = problem.num_constraints() + 1;
-    let width = problem.num_variables() + problem.num_constraints() + 2;
+    let height = problem.num_constraints() + 2;
+    let width = problem.num_variables() + problem.num_constraints() + 3;
     let mut coeffs = vec![0.0;width*height];
 
-    let mut row = 1;
+    let mut row = 2;
     for constraint in problem.constraints().iter() {
+        let neg = if constraint.constant() < 0.0 { -1.0 } else { 1.0 };
+
         for (index, value) in constraint.expr().iter() {
-            coeffs[1 + *index as usize + row * width] = *value;
+            coeffs[2 + *index as usize + row * width] = *value * neg;
         }
-        coeffs[width - 1 + row * width] = constraint.constant();
+        coeffs[width - 1 + row * width] = constraint.constant() * neg;
 
         row += 1;
     }
 
+    coeffs[0] = 1.0;
     if let Some(objective) = problem.objective() {
-        let row = 0;
+        let row = 1;
         for (index, value) in objective.iter(){
-            coeffs[1 + *index as usize + row * width] = *value * -1.0;
+            coeffs[2 + *index as usize + row * width] = *value * -1.0;
         }
-        coeffs[0 + row * width] = 1.0;
+        coeffs[1 + row * width] = 1.0;
     }
 
-    let mut matrix = Matrix::new_simplex(width, height, problem.num_variables(),
-        problem.objective_kind().unwrap(), coeffs);
+    let mut matrix = Matrix::new(width, height, coeffs);
     info!("Set up initial problem.");
     debug!("{:?}", matrix);
 
-    let slack_start_row = problem.num_variables() + 1;
+    let mut num_artificial = 0;
+    let slack_start_row = problem.num_variables() + 2;
     for (i, constraint) in problem.constraints().iter().enumerate() {
-        let value = match constraint.kind() {
-            ConstraintKind::LessThanOrEqualTo => 1.0,
-            ConstraintKind::GreaterThanOrEqualTo => -1.0,
-            ConstraintKind::EqualTo => 0.0,
+        let (value, artificial) = match constraint.kind() {
+            ConstraintKind::LessThanOrEqualTo => (1.0, false),
+            ConstraintKind::GreaterThanOrEqualTo => (-1.0, false),
+            ConstraintKind::EqualTo => (1.0, true),
         };
-        matrix.set_value_raw(i + 1, i + slack_start_row, value);
+        matrix.set_value_raw(i + 2, i + slack_start_row, value);
+
+        if artificial {
+            matrix.set_value_raw(0, i + slack_start_row, -1.0);
+            matrix.add_row(Row::new(i + 2), Row::new(0), 1.0);
+            num_artificial += 1;
+        }
     }
-    info!("Set up slack variables");
+    info!("Set up slack and artifical variables");
     debug!("{:?}", matrix);
 
-    Ok(matrix)
+    Ok((matrix, num_artificial))
 }
 
-pub fn simplex(matrix: &mut Matrix) -> Result<Solution> {
+pub fn simplex(matrix: &mut Matrix,
+               num_variables: usize,
+               objective_rows: usize,
+               objective_kind: ObjectiveKind) -> Result<Solution> {
     info!("Initializing simplex solver");
-    debug!("Problem:");
-    debug!("{:?}", matrix);
 
     let mut iteration = 0;
     loop {
-        info!("\nIteration {}", iteration);
+        info!("Iteration {}", iteration);
         debug!("{:?}", matrix);
         if iteration >= matrix.width() * matrix.height() {
             warn!("Warning.  Failed to find solution after {} iterations", iteration);
             return SolverError::unable_to_solve("Failed to find solution");
         }
 
-        let objective_columns = find_valid_objective_columns(matrix);
-        if objective_columns.is_empty() { break; }
-
-        let pivot_col = select_pivot_column(matrix, &objective_columns);
+        let pivot_col = match select_pivot_column(matrix, objective_kind) {
+            None => {
+                info!("No available pivot columns - solution is optimal");
+                break;
+            }, Some(col) => col,
+        };
         info!("Selected pivot column {:?}", pivot_col);
 
-        let pivot_row = match select_pivot_row(matrix, pivot_col) {
+        let pivot_row = match select_pivot_row(matrix, pivot_col, objective_rows) {
             None => {
-                warn!("Unable to find a pivot row.  function is unbounded below.");
-                return SolverError::infeasible("Function is unbounded below.");
+                warn!("Unable to find a pivot row.  function is unbounded.");
+                return SolverError::infeasible("Function is unbounded.");
             }, Some(row) => row,
         };
         info!("Selected pivot row {:?}", pivot_row);
@@ -107,14 +151,16 @@ pub fn simplex(matrix: &mut Matrix) -> Result<Solution> {
 
     info!("Simplex solve complete.");
 
-    produce_solution(matrix)
+    produce_solution(matrix, num_variables)
 }
 
-fn produce_solution(matrix: &Matrix) -> Result<Solution> {
+fn produce_solution(matrix: &Matrix, num_variables: usize) -> Result<Solution> {
     let objective = Some(matrix.value(matrix.first_row(), matrix.last_col()));
-    let mut coeffs = vec![0.0; matrix.num_variables()];
+    let mut coeffs = vec![0.0; num_variables];
 
-    for col in matrix.cols_range(matrix.first_col() + 1, matrix.last_col()) {
+    let mut out_index = 0;
+    let first_col = matrix.first_col();
+    for col in matrix.cols_range(first_col + 1, first_col + 1 + coeffs.len()) {
         let mut ident_row = None;
         let mut skip = false;
 
@@ -129,14 +175,13 @@ fn produce_solution(matrix: &Matrix) -> Result<Solution> {
             }
         }
 
-        if skip { continue; }
-
-        if let Some(row) = ident_row {
-            let index = col.index() - 1;
-            if index < coeffs.len() {
-                coeffs[index] = matrix.value(row, matrix.last_col());
+        if !skip {
+            if let Some(row) = ident_row {
+                coeffs[out_index] = matrix.value(row, matrix.last_col());
             }
         }
+
+        out_index += 1;
     }
 
     let solution = Solution::new(coeffs, objective);
@@ -144,50 +189,50 @@ fn produce_solution(matrix: &Matrix) -> Result<Solution> {
     Ok(solution)
 }
 
-fn find_valid_objective_columns(matrix: &Matrix) -> Vec<Col> {
-    let mut result = Vec::new();
-    for col in matrix.cols_from(matrix.first_col() + 1) {
+fn select_pivot_column(matrix: &Matrix, objective_kind: ObjectiveKind) -> Option<Col> {
+    let mut best_val = 0.0;
+    let mut best_col = None;
+
+    for col in matrix.cols_range(matrix.first_col() + 1, matrix.last_col()) {
         let value = matrix.value(matrix.first_row(), col);
-        match matrix.objective_kind() {
-            ObjectiveKind::Minimize => if value > 0.0 { result.push(col); }
-            ObjectiveKind::Maximize => if value < 0.0 { result.push(col); }
+        match objective_kind {
+            ObjectiveKind::Minimize => {
+                if value > best_val {
+                    best_col = Some(col);
+                    best_val = value;
+                }
+            },
+            ObjectiveKind::Maximize => {
+                if value < best_val {
+                    best_col = Some(col);
+                    best_val = value;
+                }
+            }
         }
     }
 
-    result
+    best_col
 }
 
-fn select_pivot_column(_matrix: &Matrix, valid_cols: &[Col]) -> Col {
-    if valid_cols.is_empty() { panic!(); }
-
-    // TODO select the best column through an algorithm such as devex
-    valid_cols[0]
-}
-
-fn select_pivot_row(matrix: &Matrix, pivot_col: Col) -> Option<Row> {
-    let mut candidates = Vec::new();
-
-    for row in matrix.rows_from(matrix.first_row() + 1) {
-        if matrix.value(row, pivot_col) > 0.0 {
-            candidates.push(row);
-        }
-    }
-
-    if candidates.is_empty() { return None; }
-
+fn select_pivot_row(matrix: &Matrix, pivot_col: Col, num_rows_skip: usize) -> Option<Row> {
     let mut min = f64::MAX;
-    let mut min_row = candidates[0];
-    for row in candidates {
-        let min_ratio_test = matrix.value(row, matrix.last_col()) /
-            matrix.value(row, pivot_col);
+    let mut min_row = None;
+
+    for row in matrix.rows_from(matrix.first_row() + num_rows_skip) {
+        let value = matrix.value(row, pivot_col);
+        if value <= 0.0 { continue; }
+
+        let min_ratio_test = matrix.value(row, matrix.last_col()) / value;
+
+        if min_ratio_test < 0.0 { continue; }
 
         if min_ratio_test < min {
-            min_row = row;
+            min_row = Some(row);
             min = min_ratio_test;
         }
     }
 
-    return Some(min_row);
+    return min_row
 }
 
 fn simplex_pivot(matrix: &mut Matrix, pivot_row: Row, pivot_col: Col) {

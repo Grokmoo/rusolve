@@ -153,36 +153,16 @@ impl fmt::Debug for Solution {
 
 #[macro_export]
 macro_rules! create_problem {
-    ( $( [ $($val:expr),* ; == $constant:expr ] ),* ) => {
+    ( $( [ $($val:expr),* ; $kind:expr ; $constant:expr ] ),* ) => {
         {
             let mut problem = Problem::new();
             $(
-                let constraint = create_constraint!($($val),*; == $constant);
+                let constraint = create_constraint!($($val),*; $kind ; $constant);
                 problem.add_constraint(constraint);
             )*
             problem
         }
-    };
-    ( $( [ $($val:expr),* ; <= $constant:expr ] ),* ) => {
-        {
-            let mut problem = Problem::new();
-            $(
-                let constraint = create_constraint!($($val),*; <= $constant);
-                problem.add_constraint(constraint);
-            )*
-            problem
-        }
-    };
-    ( $( [ $($val:expr),* ; >= $constant:expr ] ),* ) => {
-        {
-            let mut problem = Problem::new();
-            $(
-                let constraint = create_constraint!($($val),*; >= $constant);
-                problem.add_constraint(constraint);
-            )*
-            problem
-        }
-    };
+    }
 }
 
 #[macro_export]
@@ -200,7 +180,7 @@ macro_rules! create_expr {
 
 #[macro_export]
 macro_rules! create_constraint {
-    ( $($val:expr),* ; <= $constant:expr ) => {
+    ( $($val:expr),* ; $kind:expr ; $constant:expr ) => {
         {
             let mut expr = Expression::default();
             let mut coeffs = Vec::new();
@@ -208,29 +188,13 @@ macro_rules! create_constraint {
                 coeffs.push($val);
             )*
             expr.add_coeffs(&coeffs);
-            Constraint::new(expr, ConstraintKind::LessThanOrEqualTo, $constant)
-        }
-    };
-    ( $($val:expr),* ; >= $constant:expr ) => {
-        {
-            let mut expr = Expression::default();
-            let mut coeffs = Vec::new();
-            $(
-                coeffs.push($val);
-            )*
-            expr.add_coeffs(&coeffs);
-            Constraint::new(expr, ConstraintKind::GreaterThanOrEqualTo, $constant)
-        }
-    };
-    ( $($val:expr),* ; == $constant:expr ) => {
-        {
-            let mut expr = Expression::default();
-            let mut coeffs = Vec::new();
-            $(
-                coeffs.push($val);
-            )*
-            expr.add_coeffs(&coeffs);
-            Constraint::new(expr, ConstraintKind::EqualTo, $constant)
+
+            match stringify!($kind) {
+                "le" => Constraint::new(expr, ConstraintKind::LessThanOrEqualTo, $constant),
+                "ge" => Constraint::new(expr, ConstraintKind::GreaterThanOrEqualTo, $constant),
+                "eq" => Constraint::new(expr, ConstraintKind::EqualTo, $constant),
+                _ => panic!("Invalid constraint type"),
+            }
         }
     }
 }
@@ -329,11 +293,9 @@ impl Problem {
     }
 
     pub fn solve(&self) -> Result<Solution> {
-        let mut matrix = match self.objective {
-            None => gaussian_elimination::setup_matrix(self)?,
-            Some(_) => simplex::setup_matrix(self)?,
-        };
-
-        matrix.solve()
+        match self.objective {
+            None => gaussian_elimination::solve(self),
+            Some(_) => simplex::solve(self),
+        }
     }
 }

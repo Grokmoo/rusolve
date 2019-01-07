@@ -18,7 +18,13 @@ use log::{debug, info};
 
 use crate::{Matrix, Row, Col, Problem, Solution, Result, SolverError};
 
-pub fn setup_matrix(problem: &Problem) -> Result<Matrix> {
+pub fn solve(problem: &Problem) -> Result<Solution> {
+    let matrix = setup_matrix(problem)?;
+
+    gaussian_elimination(matrix)
+}
+
+fn setup_matrix(problem: &Problem) -> Result<Matrix> {
     if problem.objective_kind().is_some() {
         return SolverError::invalid_objective("Gaussian elimination does not accept\
                 an objective function.");
@@ -51,10 +57,10 @@ pub fn setup_matrix(problem: &Problem) -> Result<Matrix> {
         coeffs[width - 1 + row * width] = constraint.constant();
     }
 
-    Ok(Matrix::new_gaussian_elimination(width, height, problem.num_variables(), coeffs))
+    Ok(Matrix::new(width, height, coeffs))
 }
 
-pub fn gaussian_elimination(matrix: &mut Matrix) -> Result<Solution> {
+fn gaussian_elimination(mut matrix: Matrix) -> Result<Solution> {
     let mut pivot_row = matrix.first_row();
     let mut pivot_col = matrix.first_col();
 
@@ -62,8 +68,8 @@ pub fn gaussian_elimination(matrix: &mut Matrix) -> Result<Solution> {
     debug!("{:?}", matrix);
 
     info!("Reducing matrix to triangular form");
-    while pivot_row.is_valid(matrix) && pivot_col.is_valid(matrix) {
-        let pivot_max = find_pivot_max(matrix, pivot_row, pivot_col);
+    while pivot_row.is_valid(&matrix) && pivot_col.is_valid(&matrix) {
+        let pivot_max = find_pivot_max(&matrix, pivot_row, pivot_col);
 
         if matrix.value(pivot_max, pivot_col) == 0.0 {
             pivot_col += 1;

@@ -18,21 +18,14 @@ use std::{f64, fmt, ops};
 
 use log::{warn};
 
-use crate::{Solution, ObjectiveKind, Result};
-use crate::{simplex::simplex, gaussian_elimination::gaussian_elimination};
-
-enum Mode {
-    GaussianElimination,
-    Simplex,
-}
-
 pub struct Matrix {
-    width: usize,
-    height: usize,
-    variables: usize,
-    objective_kind: ObjectiveKind,
+    start_x: usize,
+    start_y: usize,
+    end_x: usize,
+    end_y: usize,
+    total_width: usize,
+    _total_height: usize,
     coeffs: Vec<f64>,
-    mode: Mode,
 }
 
 impl fmt::Debug for Matrix {
@@ -48,44 +41,50 @@ impl fmt::Debug for Matrix {
 }
 
 impl Matrix {
-    pub(crate) fn new_gaussian_elimination(width: usize, height: usize, variables: usize,
-                                           coeffs: Vec<f64>) -> Matrix {
+    pub(crate) fn new(width: usize, height: usize, coeffs: Vec<f64>) -> Matrix {
+        if width * height != coeffs.len() {
+            panic!();
+        }
+
+        if width <= 2 || height <= 2 {
+            panic!();
+        }
+
         Matrix {
-            width,
-            height,
-            variables,
+            start_x: 0,
+            start_y: 0,
+            end_x: width,
+            end_y: height,
+            total_width: width,
+            _total_height: height,
             coeffs,
-            mode: Mode::GaussianElimination,
-            objective_kind: ObjectiveKind::Minimize, // unused for this problem
         }
     }
 
-    pub(crate) fn new_simplex(width: usize, height: usize, variables: usize,
-                              objective_kind: ObjectiveKind, coeffs: Vec<f64>) -> Matrix {
-        Matrix {
-            width,
-            height,
-            variables,
-            objective_kind,
-            coeffs,
-            mode: Mode::Simplex,
+    /// Sets this matrix to be a sub-view into the overall matrix with the specified
+    /// `start_x` and `start_y` coords
+    pub fn sub(&mut self, start_x: usize, start_y: usize) {
+        if self.start_x >= self.end_x || self.start_y >= self.end_y {
+            panic!();
         }
+        self.start_x = start_x;
+        self.start_y = start_y;
     }
 
     pub fn last_row(&self) -> Row {
-        Row::new(self.height - 1)
+        Row::new(self.end_y - 1)
     }
 
     pub fn last_col(&self) -> Col {
-        Col::new(self.width - 1)
+        Col::new(self.end_x - 1)
     }
 
     pub fn first_col(&self) -> Col {
-        Col::new(0)
+        Col::new(self.start_x)
     }
 
     pub fn first_row(&self) -> Row {
-        Row::new(0)
+        Row::new(self.start_y)
     }
 
     pub fn cols_range(&self, start: Col, end: Col) -> impl DoubleEndedIterator<Item=Col> {
@@ -93,7 +92,7 @@ impl Matrix {
     }
 
     pub fn cols_from(&self, start: Col) -> impl DoubleEndedIterator<Item=Col> {
-        ops::Range { start: start.value, end: self.width }.map(|val| Col::new(val))
+        ops::Range { start: start.value, end: self.end_x }.map(|val| Col::new(val))
     }
 
     pub fn rows_range(&self, start: Col, end: Col) -> impl DoubleEndedIterator<Item=Row> {
@@ -101,39 +100,35 @@ impl Matrix {
     }
 
     pub fn rows_from(&self, start: Row) -> impl DoubleEndedIterator<Item=Row> {
-        ops::Range { start: start.value, end: self.height }.map(|val| Row::new(val))
+        ops::Range { start: start.value, end: self.end_y }.map(|val| Row::new(val))
     }
 
     pub fn cols(&self) -> impl DoubleEndedIterator<Item=Col> {
-        ops::Range { start: 0, end: self.width }.map(|val| Col::new(val))
+        ops::Range { start: self.start_x, end: self.end_x }.map(|val| Col::new(val))
     }
 
     pub fn rows(&self) -> impl DoubleEndedIterator<Item=Row> {
-         ops::Range { start: 0, end: self.height }.map(|val| Row::new(val))
+         ops::Range { start: self.start_y, end: self.end_y }.map(|val| Row::new(val))
     }
 
-    pub fn width(&self) -> usize { self.width }
+    pub fn width(&self) -> usize { self.end_x - self.start_x }
 
-    pub fn height(&self) -> usize { self.height }
-
-    pub fn num_variables(&self) -> usize { self.variables }
-
-    pub fn objective_kind(&self) -> ObjectiveKind { self.objective_kind }
+    pub fn height(&self) -> usize { self.end_y - self.start_y }
 
     pub fn value(&self, row: Row, col: Col) -> f64 {
-        self.coeffs[col.value + row.value * self.width]
+        self.coeffs[col.value + row.value * self.total_width]
     }
 
     /// Only for use in matrix initialization
     pub(crate) fn set_value_raw(&mut self, row: usize, col: usize, value: f64) {
-        self.coeffs[col + row * self.width] = value;
+        self.coeffs[col + row * self.total_width] = value;
     }
 
     /// Sets the specified row, col entry of the matrix to the value.  By careful using
     /// this to solve systems, it is better to use one of the basic row matrix operations
     /// below
     pub fn set_value(&mut self, row: Row, col: Col, value: f64) {
-        self.coeffs[col.value + row.value * self.width] = value;
+        self.coeffs[col.value + row.value * self.total_width] = value;
     }
 
     fn swap_values(&mut self, row1: Row, col1: Col, row2: Row, col2: Col) {
@@ -190,13 +185,6 @@ impl Matrix {
 
         false
     }
-
-    pub fn solve(&mut self) -> Result<Solution> {
-        match self.mode {
-            Mode::Simplex => simplex(self),
-            Mode::GaussianElimination => gaussian_elimination(self),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Hash)]
@@ -205,12 +193,12 @@ pub struct Row {
 }
 
 impl Row {
-    fn new(value: usize) -> Row {
+    pub(crate) fn new(value: usize) -> Row {
         Row { value }
     }
 
     pub fn is_valid(&self, matrix: &Matrix) -> bool {
-        self.value < matrix.height
+        self.value < matrix.end_y
     }
 
     pub fn index(&self) -> usize {
@@ -274,12 +262,12 @@ pub struct Col {
 }
 
 impl Col {
-    fn new(value: usize) -> Col {
+    pub(crate) fn new(value: usize) -> Col {
         Col { value }
     }
 
     pub fn is_valid(&self, matrix: &Matrix) -> bool {
-        self.value < matrix.width
+        self.value < matrix.end_x
     }
 
     pub fn index(&self) -> usize {
