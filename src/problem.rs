@@ -18,11 +18,18 @@ use std::f64;
 use std::fmt;
 use std::collections::HashMap;
 
-use crate::{Result, simplex, gaussian_elimination};
+use crate::{Result, SolverError, simplex, gaussian_elimination};
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum VariableKind {
+    Continuous,
+    Boolean,
+}
 
 #[derive(Copy, Clone, Debug)]
 pub struct Variable {
     index: u32,
+    kind: VariableKind,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -152,15 +159,15 @@ impl fmt::Debug for Solution {
 }
 
 #[macro_export]
-macro_rules! create_problem {
+macro_rules! create_constraints {
     ( $( [ $($val:expr),* ; $kind:expr ; $constant:expr ] ),* ) => {
         {
-            let mut problem = Problem::new();
+            let mut constraints = Vec::new();
             $(
                 let constraint = create_constraint!($($val),*; $kind ; $constant);
-                problem.add_constraint(constraint);
+                constraints.push(constraint);
             )*
-            problem
+            constraints
         }
     }
 }
@@ -199,15 +206,6 @@ macro_rules! create_constraint {
     }
 }
 
-#[macro_export]
-macro_rules! add_variables {
-    ( $problem:expr, $( $var:ident ),* ) => {
-        $(
-            let $var = $problem.add_variable();
-        )*
-    };
-}
-
 #[derive(Debug)]
 struct Objective {
     expr: Expression,
@@ -216,19 +214,30 @@ struct Objective {
 
 #[derive(Debug)]
 pub struct Problem {
-    max_variable: u32,
+    variables: Vec<Variable>,
     constraints: Vec<Constraint>,
     objective: Option<Objective>,
-
 }
 
 impl Problem {
     pub fn new() -> Problem {
         Problem {
-            max_variable: 0,
+            variables: Vec::new(),
             constraints: Vec::new(),
             objective: None,
         }
+    }
+
+    pub fn boolean(vars: u32) -> Problem {
+        let mut problem = Problem::new();
+        problem.add_variables(VariableKind::Boolean, vars);
+        problem
+    }
+
+    pub fn continuous(vars: u32) -> Problem {
+        let mut problem = Problem::new();
+        problem.add_variables(VariableKind::Continuous, vars);
+        problem
     }
 
     pub fn num_constraints(&self) -> usize {
@@ -258,44 +267,85 @@ impl Problem {
     }
 
     pub fn num_variables(&self) -> usize {
-        self.max_variable as usize
+        self.variables.len()
     }
 
     pub fn set_objective(&mut self, expr: Expression, kind: ObjectiveKind) {
         self.objective = Some(Objective { expr, kind });
     }
 
-    pub fn add_row(&mut self, values: &[f64], kind: ConstraintKind, constant: f64) {
-        if self.max_variable < values.len() as u32 {
-            self.max_variable = values.len() as u32;
-        }
-
+    pub fn add_row(
+        &mut self,
+        values: &[f64],
+        kind: ConstraintKind,
+        constant: f64
+    ) -> Result<()> {
         let expr = Expression::new(values);
         let constraint = Constraint::new(expr, kind, constant);
-        self.add_constraint(constraint);
+        self.add_constraint(constraint)
     }
 
-    pub fn add_variable(&mut self) -> Variable {
+    pub fn add_variables(&mut self, kind: VariableKind, num: u32) {
+        for i in 0..num {
+            let variable = Variable {
+                index: i,
+                kind: kind,
+            };
+            self.variables.push(variable);
+        }
+    }
+
+    pub fn add_variable(&mut self, kind: VariableKind) {
+        let index = self.variables.len();
         let variable = Variable {
-            index: self.max_variable,
+            index: index as u32,
+            kind: kind,
         };
-
-        self.max_variable += 1;
-
-        variable
+        self.variables.push(variable);
     }
 
-    pub fn add_constraint(&mut self, constraint: Constraint) {
-        if self.max_variable < constraint.expr.coeffs.len() as u32 {
-            self.max_variable = constraint.expr.coeffs.len() as u32;
+    pub fn add_constraints(&mut self, constraints: Vec<Constraint>) -> Result<()> {
+        for constraint in constraints {
+            self.add_constraint(constraint)?;
+        }
+
+        Ok(())
+    }
+
+    pub fn add_constraint(&mut self, constraint: Constraint) -> Result<()> {
+        if constraint.expr.coeffs.len() != self.variables.len() {
+            return SolverError::invalid_constraint(
+                format!("Expected {} vars in constraint, got {}.",
+                    self.variables.len(), constraint.expr.coeffs.len()));
         }
         self.constraints.push(constraint);
+        Ok(())
     }
 
     pub fn solve(&self) -> Result<Solution> {
+        use VariableKind::*;
+        let mut var_kind = Continuous;
+        for var in &self.variables {
+            if var.kind == Boolean {
+                var_kind = Boolean;
+            }
+        }
+
+
         match self.objective {
-            None => gaussian_elimination::solve(self),
-            Some(_) => simplex::solve(self),
+            None => {
+                match var_kind {
+                    Continuous => gaussian_elimination::solve(self),
+                    Boolean => SolverError::unable_to_solve(
+                        "A mixed integer or integer problem must specify an objective."),
+                }
+            },
+            Some(_) => {
+                match var_kind {
+                    Continuous => simplex::solve(self),
+                    Boolean => unimplemented!(),
+                }
+            },
         }
     }
 }

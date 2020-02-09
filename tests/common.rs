@@ -14,13 +14,13 @@
 //  You should have received a copy of the GNU General Public License
 //  along with rusolve.  If not, see <http://www.gnu.org/licenses/>
 
-use std::sync::{Once, ONCE_INIT};
+use std::sync::{Once};
 
 use env_logger;
 
 use rusolve::{SolverError, ErrorKind, Result, Problem};
 
-static INIT: Once = ONCE_INIT;
+static INIT: Once = Once::new();
 
 pub fn setup() -> Result<()> {
     INIT.call_once(|| {

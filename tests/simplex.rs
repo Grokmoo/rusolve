@@ -15,7 +15,7 @@
 //  along with rusolve.  If not, see <http://www.gnu.org/licenses/>
 
 use rusolve::{Constraint, ConstraintKind, Problem, Expression, ObjectiveKind, Result, ErrorKind,
-    create_problem, create_expr, create_constraint};
+    create_constraints, create_expr, create_constraint};
 
 mod common;
 use crate::common::{setup, solution_eq, solution_err};
@@ -23,8 +23,12 @@ use crate::common::{setup, solution_eq, solution_err};
 #[test]
 fn simplex_neg_b() -> Result<()> {
     setup()?;
-    let mut problem = create_problem!( [1.0, -1.0 ;le; -5.0],
-                                        [1.0,  0.0 ;le; 10.0]);
+
+    let mut problem = Problem::continuous(2);
+    problem.add_constraints(create_constraints!(
+            [1.0, -1.0 ;le; -5.0],
+            [1.0,  0.0 ;le; 10.0])
+    )?;
     problem.set_objective(create_expr!(2.0, 3.0), ObjectiveKind::Maximize);
     solution_eq(problem, vec![10.0, 15.0], Some(65.0))
 }
@@ -32,8 +36,12 @@ fn simplex_neg_b() -> Result<()> {
 #[test]
 fn simplex_eq() -> Result<()> {
     setup()?;
-    let mut problem = create_problem!( [3.0, 2.0, 1.0 ;eq; 10.0 ],
-                                       [2.0, 5.0, 3.0 ;eq; 15.0 ]);
+
+    let mut problem = Problem::continuous(3);
+    problem.add_constraints(create_constraints!(
+            [3.0, 2.0, 1.0 ;eq; 10.0 ],
+            [2.0, 5.0, 3.0 ;eq; 15.0 ])
+    )?;
     problem.set_objective(create_expr!(-2.0, -3.0, -4.0), ObjectiveKind::Minimize);
     solution_eq(problem, vec![2.142857, 0.0, 3.571429], Some(-18.571429))
 }
@@ -41,8 +49,12 @@ fn simplex_eq() -> Result<()> {
 #[test]
 fn simplex_ge() -> Result<()> {
     setup()?;
-    let mut problem = create_problem!( [1.0, 1.0 ;le; 10.0],
-                                       [1.0, 2.0 ;le; 15.0]);
+
+    let mut problem = Problem::continuous(2);
+    problem.add_constraints(create_constraints!(
+            [1.0, 1.0 ;le; 10.0],
+            [1.0, 2.0 ;le; 15.0])
+    )?;
     problem.set_objective(create_expr!(2.0, 3.0), ObjectiveKind::Maximize);
     solution_eq(problem, vec![5.0, 5.0], Some(25.0))
 }
@@ -50,8 +62,12 @@ fn simplex_ge() -> Result<()> {
 #[test]
 fn simplex_minimize() -> Result<()> {
     setup()?;
-    let mut problem = create_problem!( [ 3.0, 2.0, 1.0 ;le; 10.0],
-                                       [ 2.0, 5.0, 3.0 ;le; 15.0]);
+
+    let mut problem = Problem::continuous(3);
+    problem.add_constraints(create_constraints!(
+            [ 3.0, 2.0, 1.0 ;le; 10.0],
+            [ 2.0, 5.0, 3.0 ;le; 15.0])
+    )?;
     problem.set_objective(create_expr!(-2.0, -3.0, -4.0), ObjectiveKind::Minimize);
     solution_eq(problem, vec![0.0, 0.0, 5.0], Some(-20.0))
 }
@@ -59,7 +75,11 @@ fn simplex_minimize() -> Result<()> {
 #[test]
 fn simplex_unbounded() -> Result<()> {
     setup()?;
-    let mut problem = create_problem!( [1.0, 1.0, 1.0 ;ge; 0.0 ]);
+
+    let mut problem = Problem::continuous(3);
+    problem.add_constraints(create_constraints!(
+            [1.0, 1.0, 1.0 ;ge; 0.0 ])
+    )?;
     problem.set_objective(create_expr!(1.0, 1.0, 1.0), ObjectiveKind::Maximize);
     solution_err(problem, ErrorKind::Infeasible)
 }
