@@ -22,9 +22,10 @@ pub mod problem;
 
 mod gaussian_elimination;
 mod simplex;
+mod brute;
 
 pub use crate::problem::{Variable, Constraint, ConstraintKind,
-    ObjectiveKind, Expression, Problem, Solution};
+    ObjectiveKind, Expression, Problem, Solution, VariableKind};
 pub use crate::matrix::{Matrix, Row, Col};
 
 pub type Result<T> = std::result::Result<T, SolverError>;

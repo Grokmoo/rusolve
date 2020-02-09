@@ -78,7 +78,7 @@ pub fn setup_matrix(problem: &Problem) -> Result<(Matrix, usize)> {
     }
 
     coeffs[0] = 1.0;
-    if let Some(objective) = problem.objective() {
+    if let Some(objective) = problem.objective_expr() {
         let row = 1;
         for (index, value) in objective.iter(){
             coeffs[2 + *index as usize + row * width] = *value * -1.0;

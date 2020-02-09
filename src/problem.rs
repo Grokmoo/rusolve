@@ -18,18 +18,22 @@ use std::f64;
 use std::fmt;
 use std::collections::HashMap;
 
-use crate::{Result, SolverError, simplex, gaussian_elimination};
+use crate::{Result, SolverError, simplex, gaussian_elimination, brute};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum VariableKind {
     Continuous,
-    Boolean,
+    Integer(i32, i32),
 }
 
 #[derive(Copy, Clone, Debug)]
 pub struct Variable {
     index: u32,
     kind: VariableKind,
+}
+
+impl Variable {
+    pub fn kind(&self) -> VariableKind { self.kind }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -63,6 +67,10 @@ impl Expression {
         }
 
         expr
+    }
+
+    pub fn get(&self, index: u32) -> f64 {
+        *self.coeffs.get(&index).unwrap_or(&0.0)
     }
 
     pub fn add_coeffs(&mut self, coeffs: &[f64]) {
@@ -230,7 +238,7 @@ impl Problem {
 
     pub fn boolean(vars: u32) -> Problem {
         let mut problem = Problem::new();
-        problem.add_variables(VariableKind::Boolean, vars);
+        problem.add_variables(VariableKind::Integer(0, 1), vars);
         problem
     }
 
@@ -252,6 +260,13 @@ impl Problem {
         &self.constraints
     }
 
+    pub fn objective(&self) -> Option<(&Expression, ObjectiveKind)> {
+        match &self.objective {
+            None => None,
+            Some(obj) => Some((&obj.expr, obj.kind)),
+        }
+    }
+
     pub fn objective_kind(&self) -> Option<ObjectiveKind> {
         match &self.objective {
             None => None,
@@ -259,11 +274,15 @@ impl Problem {
         }
     }
 
-    pub fn objective(&self) -> Option<&Expression> {
+    pub fn objective_expr(&self) -> Option<&Expression> {
         match &self.objective {
             None => None,
             Some(obj) => Some(&obj.expr)
         }
+    }
+
+    pub fn variables(&self) -> impl Iterator<Item=&Variable> {
+        self.variables.iter()
     }
 
     pub fn num_variables(&self) -> usize {
@@ -326,8 +345,8 @@ impl Problem {
         use VariableKind::*;
         let mut var_kind = Continuous;
         for var in &self.variables {
-            if var.kind == Boolean {
-                var_kind = Boolean;
+            if let Integer(..) = var.kind {
+                var_kind = Integer(0, 0);
             }
         }
 
@@ -336,14 +355,14 @@ impl Problem {
             None => {
                 match var_kind {
                     Continuous => gaussian_elimination::solve(self),
-                    Boolean => SolverError::unable_to_solve(
+                    Integer(..) => SolverError::unable_to_solve(
                         "A mixed integer or integer problem must specify an objective."),
                 }
             },
             Some(_) => {
                 match var_kind {
                     Continuous => simplex::solve(self),
-                    Boolean => unimplemented!(),
+                    Integer(..) => brute::solve(self),
                 }
             },
         }
